@@ -1,3 +1,4 @@
+
 //
 // Example from: http://www.amparo.net/ce155/sem-ex.c
 // 
@@ -61,22 +62,24 @@ private:
 
 
 /* global vars */
-const int bufferSize = 5;
-const int numConsumers = 3; 
-const int numProducers = 3; 
+int customers = 0;
+int n = 4;
+int writers;
 
 /* semaphores are declared global so they can be accessed
  in main() and in thread routine. */
 Semaphore Mutex(1);
-Semaphore Spaces(bufferSize);
-Semaphore Items(0);             
+Semaphore Customer(1);
+Semaphore Barber(0);
+Semaphore customerDone(0);
+Semaphore barberDone(0);
 
 
 
 /*
     Producer function 
 */
-void *Producer ( void *threadID )
+void *customer ( void *threadID )
 {
     // Thread number 
     int x = (long)threadID;
@@ -84,12 +87,26 @@ void *Producer ( void *threadID )
     while( 1 )
     {
         sleep(3); // Slow the thread down a bit so we can see what is going on
-        Spaces.wait();
         Mutex.wait();
-            printf("Producer %d adding item to buffer \n", x);
-            fflush(stdout);
+            if (customers == n){
+                Mutex.signal();
+                printf("The barber shop is full. The customer has to leave. \n");
+            }
+            customers += 1;
         Mutex.signal();
-        Items.signal();
+
+        Customer.signal();
+        Barber.wait();
+        //getHaircut
+            printf("Customer %d is getting haircut \n", x);
+                fflush(stdout);
+
+        customerDone.signal();
+        barberDone.wait();
+
+        Mutex.wait();
+            customers -= 1;
+        Mutex.signal();
     }
 
 }
@@ -97,19 +114,22 @@ void *Producer ( void *threadID )
 /*
     Consumer function 
 */
-void *Consumer ( void *threadID )
+void *barber ( void *threadID )
 {
     // Thread number 
-    int x = (long)threadID;
+    //int x = (long)threadID;
     
     while( 1 )
     {
-        Items.wait();
-        Mutex.wait();
-            printf("Consumer %d removing item from buffer \n", x);
-            fflush(stdout);
-        Mutex.signal();
-        Spaces.signal();
+        Customer.wait();
+        Barber.signal();
+
+            printf("Barber is giving haircut \n");
+                fflush(stdout);
+
+        customerDone.wait();
+        barberDone.signal();
+
         sleep(5);   // Slow the thread down a bit so we can see what is going on
     }
 
@@ -118,45 +138,46 @@ void *Consumer ( void *threadID )
 
 int main(int argc, char **argv )
 {
-    pthread_t producerThread[ numProducers ];
-    pthread_t consumerThread[ numConsumers ];
+    pthread_t customerThread[ 4 ];
+    pthread_t barberThread[ 3 ];
 
-    // Create the producers 
-    for( long p = 0; p < numProducers; p++ )
+    // Create the customers 
+    for( long c = 0; c < 4; c++ )
     {
-        int rc = pthread_create ( &producerThread[ p ], NULL, 
-                                  Producer, (void *) (p+1) );
-        if (rc) {
+        int customerthread = pthread_create ( &customerThread[ c ], NULL, 
+                                  customer, (void *) (c+1) );
+        if (customerthread) {
             printf("ERROR creating producer thread # %d; \
-                    return code from pthread_create() is %d\n", p, rc);
+                    return code from pthread_create() is %d\n", c, customerthread);
             exit(-1);
         }
     }
 
-    // Create the consumers 
-    for( long c = 0; c < numConsumers; c++ )
+    // Create the barber 
+    int barberthread = pthread_create ( &barberThread[ 3 ], NULL, 
+                                  barber, (void *) (3) );
+        
+	for( long b = 0; b < 3; b++ )
     {
-        int rc = pthread_create ( &consumerThread[ c ], NULL, 
-                                  Consumer, (void *) (c+1) );
-        if (rc) {
+        int customerthread = pthread_create ( &customerThread[ b ], NULL, 
+                                  customer, (void *) (b+1) );
+        if (barberthread) {
             printf("ERROR creating consumer thread # %d; \
-                    return code from pthread_create() is %d\n", c, rc);
+                    return code from pthread_create() is %d\n", b, barberthread);
             exit(-1);
+
         }
     }
-
+      
     printf("Main: program completed. Exiting.\n");
 
 
     // To allow other threads to continue execution, the main thread 
     // should terminate by calling pthread_exit() rather than exit(3). 
     pthread_exit(NULL); 
+}
 
 
-} /* main() */
-
-
-
-
+ /* main() */
 
 
